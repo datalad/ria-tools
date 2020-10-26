@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os
+import sys
 import hashlib
 import subprocess
 from pathlib import Path
@@ -17,6 +17,16 @@ from pathlib import Path
 # /store/814/cb17e-95b2-11ea-8bc2-d14d8c08eceb/annex/objects/km/xp/MD5E-s5--a2e5e988620bbe17ef14dfd37e4d86ca/MD5E-s5--a2e5e988620bbe17ef14dfd37e4d86ca
 
 # In simplest case this is exactly what we need to look at
+
+
+
+
+
+# TODO: This is imported once during runtime of webserver. We could use module
+#       level for caching!
+#       - Note: Datasets/stores may have different layouts/permissions
+#               -> Cache needs file path keys
+#               -> How to deal with permissions?
 
 class KeyNotFoundError(Exception):
     pass
@@ -159,78 +169,103 @@ class AnnexObject(object):
             raise ValueError("invalid key: {}".format(self.key))
 
 
-# TODO: better SCRIPT_NAME and check REQUEST has no parameters?
-# TODO: What's CONTEXT_DOCUMENT_ROOT vs  DOCUMENT_ROOT ?
-key_object = AnnexObject(os.environ.get("REQUEST_URI"),
-                         os.environ.get("CONTEXT_DOCUMENT_ROOT"))
 
-method = os.environ.get("REQUEST_METHOD")
+def application (environ, start_response):
 
-header_fields = dict()
-content = None
+    response_headers = list()
+    response_body = None
 
-if method == "GET":
-    try:
-        content = key_object.get()
-        header_fields["Content-Type"] = "application/octet-stream"
-        header_fields["Content-Disposition"] = "attachment; filename=\"{}\"" \
-                                               "".format(key_object.key)
-        length = None
+    # fail early on invalid requests:
+    # TODO: This probably needs to be enhanced. For now just have some rejection
+    #       implemented from the start.
+    if environ['QUERY_STRING'] or \
+            environ['REQUEST_METHOD'] not in ['HEAD', 'GET']:
+        # no query is currently implemented
+        status = "400 Bad Request"
+        response_body = "<h1>{}</h1>".format(status).encode('utf-8')
+        response_headers.extend([('Content-Type', 'text/html; charset=utf-8'),
+                                 ('Content-Length', str(len(response_body)))
+                                 ])
+        start_response(status, response_headers)
+        return [response_body]
+
+    # TODO: What's CONTEXT_DOCUMENT_ROOT vs  DOCUMENT_ROOT ?
+    #       Also: Double-check what's actually part of WSGI spec. vs being
+    #             Apache (config) specific.
+    key_object = AnnexObject(environ.get("REQUEST_URI"),
+                             environ.get("CONTEXT_DOCUMENT_ROOT"))
+
+    if environ.get("REQUEST_METHOD") == "GET":
         try:
-            length = key_object.size()
-            header_fields["Content-Length"] = str(length)
-        except ValueError:
-            # invalid key
-            # TODO: for now just no size info
-            #       but:
-            #       we might want to consider checking this before hand and
-            #       reject to serve sth that is based on an invalid key
-            pass
+            response_body = key_object.get()
+            status = "200 OK"
+            response_headers.extend([
+                ('Content-Type', 'application/octet-stream'),
+                ('Content-Disposition',
+                 'attachment; filename=\"{}\"'.format(key_object.key))
+            ])
+            try:
+                response_headers.append(('Content-Length',
+                                         str(key_object.size())))
+            except ValueError:
+                # invalid key
+                # TODO: for now just no size info
+                #       but:
+                #       we might want to consider checking this before hand and
+                #       reject to serve sth that is based on an invalid key
+                pass
 
-        # TODO: ETag header field using the key itself?
+            # TODO: ETag header field using the key itself?
 
-    except KeyNotFoundError:
-        header_fields["Status"] = "404 Not Found"
-        header_fields["Content-Type"] = "text/html"
-        content = "<h1>{}</h1>".format(header_fields["Status"])
+        except KeyNotFoundError:
+            status = "404 Not Found"
+            response_headers.append(('Content-Type', 'text/html; charset=utf-8'))
+            response_body = "<h1>{}</h1>".format(status).encode('utf-8')
+        except PermissionError:
+            status = "403 Forbidden"
+            response_headers.append(('Content-Type', 'text/html; charset=utf-8'))
+            # note, that the error itself intentionally isn't reported in a
+            # public response, since it may contain paths etc. revealing
+            # internal structure.
+            # TODO: Put into store-side log instead
+            response_body = "<h1>{}</h1>".format(status).encode('utf-8')
+        except Exception:
+            # something else failed
+            # Note: report error class only to not reveal anything internal
+            # TODO: Figure out proper exception detection and error reporting
+            exctype, value, tb = sys.exc_info()
+            status = "500 Internal Server Error"
+            response_headers.append(('Content-Type', 'text/html; charset=utf-8'))
+            response_body = "<h1>{}</h1><p>{}</p>" \
+                            "".format(status, repr(exctype).strip('<>')).encode('utf-8')
 
-elif method == "HEAD":
-    # Check key availability and respond accordingly
-    # TODO: - No read permission -> Status?
-    #       - "200 OK" or "302 Found"?
 
-    if key_object.is_present():
-        header_fields["Status"] = "200 OK"
-        header_fields["Content-Type"] = "application/octet-stream"
-        length = None
-        try:
-            length = key_object.size()
-            header_fields["Content-Length"] = str(length)
-        except ValueError:
-            # invalid key
-            # TODO: for now just no size info
-            #       but:
-            #       we might want to consider checking this before hand and
-            #       reject to serve sth that is based on an invalid key
-            pass
+    elif environ.get("REQUEST_METHOD") == "HEAD":
+        # Check key availability and respond accordingly
+        # TODO: - No read permission -> Status? 404 to not give it away?
+        #       - "200 OK" or "302 Found"?
 
-    else:
-        header_fields["Status"] = "404 Not Found"
-        header_fields["Content-Type"] = "text/html"
-        content = "<h1>{}</h1>".format(header_fields["Status"])
+        if key_object.is_present():
+            status = "200 OK"
+            response_headers.append(('Content-Type', 'application/octet-stream'))
+            try:
+                response_headers.append(('Content-Length',
+                                         str(key_object.size())))
+            except ValueError:
+                # invalid key
+                # TODO: for now just no size info
+                #       but:
+                #       we might want to consider checking this before hand and
+                #       reject to serve sth that is based on an invalid key
+                pass
 
-else:
-    # TODO: Proper status
-    raise ValueError
+        else:
+            status = "404 Not Found"
+            response_body = "<h1>{}</h1>".format(status).encode('utf-8')
+            response_headers.extend(
+                [('Content-Type', 'text/html; charset=utf-8'),
+                 ('Content-Length', str(len(response_body)))
+                 ])
 
-for field, value in header_fields.items():
-    print("{}: {}".format(field, value))
-print("")  # end header
-if content:
-    if isinstance(content, bytes):
-        import sys
-        sys.stdout.flush()
-        sys.stdout.buffer.write(content)
-        sys.stdout.flush()
-    else:
-        print(content)
+    start_response(status, response_headers)
+    return [response_body]
