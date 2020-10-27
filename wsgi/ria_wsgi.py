@@ -5,12 +5,6 @@ import hashlib
 import subprocess
 from pathlib import Path
 
-# for debugging: (consider enable(display=0, logdir=/log/path/)  later on)
-# import cgi
-#import cgitb
-#cgitb.enable()  # note: logdir="/tmp/logs" didn't work locally (why?)
-# cgi.test()
-
 
 # Requested URI is supposed to point to an annex key (dirhashmixed),
 # i.e. something like
@@ -18,8 +12,8 @@ from pathlib import Path
 
 # In simplest case this is exactly what we need to look at
 
-
-
+# store class (+cache?): Based on CONTEXT_DOCUMENT_ROOT
+# AnnexObject can then be based on PATH_INFO
 
 
 # TODO: This is imported once during runtime of webserver. We could use module
@@ -169,8 +163,7 @@ class AnnexObject(object):
             raise ValueError("invalid key: {}".format(self.key))
 
 
-
-def application (environ, start_response):
+def application(environ, start_response):
 
     response_headers = list()
     response_body = None
@@ -189,11 +182,17 @@ def application (environ, start_response):
         start_response(status, response_headers)
         return [response_body]
 
-    # TODO: What's CONTEXT_DOCUMENT_ROOT vs  DOCUMENT_ROOT ?
-    #       Also: Double-check what's actually part of WSGI spec. vs being
-    #             Apache (config) specific.
-    key_object = AnnexObject(environ.get("REQUEST_URI"),
-                             environ.get("CONTEXT_DOCUMENT_ROOT"))
+    # TODO: consider using the following rathern than querying env vars. Setup
+    #       might be more complex.
+    # from wsgiref.util import request_uri, application_uri
+
+    # Note, that empty values might not be present in the environment at all
+    # TODO: What are reasonable defaults in that case? / How to deal with it
+    #       if we don't go for any defaults? ATM 'None' will lead to an
+    #       exception in AnnexObject.__init__ and therefore to an 500 response,
+    #       which may or may not be wat we want.
+    key_object = AnnexObject(environ.get("PATH_INFO"),
+                             environ.get("CONTEXT_DOCUMENT_ROOT", '/'))
 
     if environ.get("REQUEST_METHOD") == "GET":
         try:
@@ -239,7 +238,6 @@ def application (environ, start_response):
             response_body = "<h1>{}</h1><p>{}</p>" \
                             "".format(status, repr(exctype).strip('<>')).encode('utf-8')
 
-
     elif environ.get("REQUEST_METHOD") == "HEAD":
         # Check key availability and respond accordingly
         # TODO: - No read permission -> Status? 404 to not give it away?
@@ -268,4 +266,4 @@ def application (environ, start_response):
                  ])
 
     start_response(status, response_headers)
-    return [response_body]
+    return [response_body] if response_body else []
