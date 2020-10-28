@@ -4,6 +4,7 @@ import sys
 import hashlib
 import subprocess
 from pathlib import Path
+from io import BytesIO
 
 
 # Requested URI is supposed to point to an annex key (dirhashmixed),
@@ -21,6 +22,12 @@ from pathlib import Path
 #       - Note: Datasets/stores may have different layouts/permissions
 #               -> Cache needs file path keys
 #               -> How to deal with permissions?
+
+
+BLOCKSIZE = 8192
+# ATM this needs to be adjusted to server config and may need to be
+# "SCRIPT_NAME" for example:
+PATH_IN_ENV = "PATH_INFO"
 
 class KeyNotFoundError(Exception):
     pass
@@ -122,13 +129,13 @@ class AnnexObject(object):
     def get(self):
 
         if self.in_object_tree():
-            return self.file_path.read_bytes()
+            return self.file_path.open('rb')
         elif self.in_archive():
             res = subprocess.run(['7z', 'x', '-so',
                                   str(self.archive_path),
                                   str(self.object_path)],
                                  stdout=subprocess.PIPE)
-            return res.stdout
+            return BytesIO(res.stdout)
         else:
             raise KeyNotFoundError
 
@@ -191,17 +198,22 @@ def application(environ, start_response):
     #       if we don't go for any defaults? ATM 'None' will lead to an
     #       exception in AnnexObject.__init__ and therefore to an 500 response,
     #       which may or may not be wat we want.
-    key_object = AnnexObject(environ.get("PATH_INFO"),
+    key_object = AnnexObject(environ.get(PATH_IN_ENV),
                              environ.get("CONTEXT_DOCUMENT_ROOT", '/'))
 
     if environ.get("REQUEST_METHOD") == "GET":
         try:
-            response_body = key_object.get()
+            f = key_object.get()
+            if 'wsgi.file_wrapper' in environ:  # optional acc. to WSGI spec
+                response_body = environ['wsgi.file_wrapper'](f)
+            else:
+                response_body = iter(lambda: f.read(BLOCKSIZE), b'')
+
             status = "200 OK"
             response_headers.extend([
-                ('Content-Type', 'application/octet-stream'),
-                ('Content-Disposition',
-                 'attachment; filename=\"{}\"'.format(key_object.key))
+               ('Content-Type', 'application/octet-stream'),
+               ('Content-Disposition',
+                'attachment; filename=\"{}\"'.format(key_object.key))
             ])
             try:
                 response_headers.append(('Content-Length',
@@ -219,7 +231,7 @@ def application(environ, start_response):
         except KeyNotFoundError:
             status = "404 Not Found"
             response_headers.append(('Content-Type', 'text/html; charset=utf-8'))
-            response_body = "<h1>{}</h1>".format(status).encode('utf-8')
+            response_body = ["<h1>{}</h1>".format(status).encode('utf-8')]
         except PermissionError:
             status = "403 Forbidden"
             response_headers.append(('Content-Type', 'text/html; charset=utf-8'))
@@ -227,16 +239,17 @@ def application(environ, start_response):
             # public response, since it may contain paths etc. revealing
             # internal structure.
             # TODO: Put into store-side log instead
-            response_body = "<h1>{}</h1>".format(status).encode('utf-8')
-        except Exception:
+            response_body = ["<h1>{}</h1>".format(status).encode('utf-8')]
+        except Exception as e:
             # something else failed
             # Note: report error class only to not reveal anything internal
             # TODO: Figure out proper exception detection and error reporting
             exctype, value, tb = sys.exc_info()
             status = "500 Internal Server Error"
             response_headers.append(('Content-Type', 'text/html; charset=utf-8'))
-            response_body = "<h1>{}</h1><p>{}</p>" \
-                            "".format(status, repr(exctype).strip('<>')).encode('utf-8')
+            response_body = ["<h1>{}</h1><p>{}</p>{}"
+                             "".format(status, repr(exctype).strip('<>')
+                                       ).encode('utf-8')]
 
     elif environ.get("REQUEST_METHOD") == "HEAD":
         # Check key availability and respond accordingly
@@ -259,11 +272,11 @@ def application(environ, start_response):
 
         else:
             status = "404 Not Found"
-            response_body = "<h1>{}</h1>".format(status).encode('utf-8')
+            response_body = ["<h1>{}</h1>".format(status).encode('utf-8')]
             response_headers.extend(
                 [('Content-Type', 'text/html; charset=utf-8'),
                  ('Content-Length', str(len(response_body)))
                  ])
 
     start_response(status, response_headers)
-    return [response_body] if response_body else []
+    return response_body if response_body else []
