@@ -29,6 +29,7 @@ BLOCKSIZE = 8192
 # "SCRIPT_NAME" for example:
 PATH_IN_ENV = "PATH_INFO"
 
+
 class KeyNotFoundError(Exception):
     pass
 
@@ -131,11 +132,11 @@ class AnnexObject(object):
         if self.in_object_tree():
             return self.file_path.open('rb')
         elif self.in_archive():
-            res = subprocess.run(['7z', 'x', '-so',
-                                  str(self.archive_path),
-                                  str(self.object_path)],
-                                 stdout=subprocess.PIPE)
-            return BytesIO(res.stdout)
+            res = subprocess.Popen(['7z', 'x', '-so',
+                                    str(self.archive_path),
+                                    str(self.object_path)],
+                                   stdout=subprocess.PIPE)
+            return res.stdout
         else:
             raise KeyNotFoundError
 
@@ -247,7 +248,7 @@ def application(environ, start_response):
             exctype, value, tb = sys.exc_info()
             status = "500 Internal Server Error"
             response_headers.append(('Content-Type', 'text/html; charset=utf-8'))
-            response_body = ["<h1>{}</h1><p>{}</p>{}"
+            response_body = ["<h1>{}</h1><p>{}</p>"
                              "".format(status, repr(exctype).strip('<>')
                                        ).encode('utf-8')]
 
