@@ -1,0 +1,47 @@
+#!/bin/bash
+#
+# Little helper to parse args
+#
+
+set -e -u
+
+# convert dataset relpath within HAMMERPANTS to a dataset ID
+function relpath2id () {
+  hp="${2:-}"
+  echo "$(echo ${1:$(expr length "$hp")} | tr -d '/')"
+}
+
+# convert dataset ID to relpath within HAMMERPANTS
+function id2relpath () {
+  echo "${1:0:3}/${1:3}"
+}
+
+if [ $# = 2 ]; then
+  hp_path="$(readlink -v -f "$1")"
+  ds_path="$hp_path/$(id2relpath $2)"
+elif [ $# = 1 ]; then
+  hp_path="$(readlink -v -f "$1/../..")"
+  ds_path="$(readlink -v -f "$1")"
+elif [ -e ria-layout-version ]; then
+  hp_path="$(readlink -v -f ../..)"
+  ds_path="$(readlink -v -f .)"
+else
+  >&2 echo "Invalid arguments"
+  exit 1
+fi
+ 
+ds_id="$(relpath2id "$ds_path" "$hp_path")"
+if [ "$(expr length "$ds_id")" != 36 ]; then
+  >&2 echo "Not a HAMMERPANTS dataset location"
+  hp_path=
+  ds_path=
+  ds_id=
+else
+  git_ds="git --git-dir $ds_path"
+fi
+
+if [ "$(basename $0)" = "hammerpants_dsinfo" ]; then
+  echo "HAMMERPANTS: $hp_path"
+  echo "DATASET:     $ds_path"
+  echo "DATASET_ID:  $ds_id"
+fi

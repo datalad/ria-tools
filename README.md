@@ -6,6 +6,43 @@ since generic deployment and acceptable dependencies aren't obvious. Instead
 it's an entry point showing what you can (and may be have to) do and how.
 
 
+## Data store maintainer scripts
+
+Various scripts are provided under `maint/`. The data store location is not hardcoded.
+
+   - hammerpants_archiveobjs
+
+     Move or copy annex objects into a 7z archive at the dataset location in the store
+
+   - hammerpants_dsdeps
+
+     Report dataset IDs of any subdatasets of a dataset
+
+   - hammerpants_dsinfo
+
+     Resolve a dataset location in a store from a variety of argument flavors (store path + ID; dataset path; PWD at a dataset location)
+
+   - hammerpants_gc
+
+     Clean-up and compact a dataset representation in the store (does not archive objects)
+
+   - hammerpants_gc_all
+
+     Run clean-ups on all datasets in a store
+
+   - hammerpants_lastupdated
+
+     Report who modified a dataset when most recently (for a single or all datasets in a store)
+
+   - hammerpants_ncommits
+
+     Report the number of commits in the master branch of a dataset (for a single or all datasets in a store)
+
+   - hammerpants_nogitrepo
+
+     List all dataset entries in a store without an associated Git repo.
+     
+     
 ## OUTDATED - base requirements for config procedure
 
 
@@ -32,3 +69,4 @@ dataset might access it via the local filesystem on brainbfast.  If no host is
 configured, the base_path is assumed to be a local path. To explicitly
 configure no host (for overriding) assign the value 0 to the respective config
 variable.
+

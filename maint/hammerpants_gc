@@ -1,0 +1,29 @@
+#!/bin/bash
+#
+# Clean-up and minimize a dataset
+#
+set -e -u
+
+source hammerpants_dsinfo
+
+# all local operations
+cd $ds_path
+
+# run garbage collection
+git gc --aggressive
+
+# fixup ownership of files created by GC when ran as root
+chown --changes -R --from=root --reference=config refs packed-refs
+
+# delete sample hooks
+if [ -d hooks ]; then
+  rm -f hooks/*.sample
+  rmdir --ignore-fail-on-non-empty hooks
+fi
+# delete branches/ and refs/tags/ if empty
+[ -d branches ] && rmdir --ignore-fail-on-non-empty branches || true
+[ -d refs/tags ] && rmdir -p --ignore-fail-on-non-empty refs/tags || true
+
+# delete template "unnamed" repo description
+[ "$(cat description 2>/dev/null | cut -d ";" -f1,1)"x = "Unnamed repository"x ] && rm description || true
+

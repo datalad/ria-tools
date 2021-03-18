@@ -1,0 +1,24 @@
+#!/bin/bash
+#
+# Prints dataset IDs for each subdataset recorded in a dataset
+# 
+# Subdataset not available in the same HAMMERPANTS are reported
+# via stderr and result in a non-zero exit code
+#
+set -e -u
+
+# from PATH, need not be executable
+source hammerpants_dsinfo
+
+error=0
+for dep in $($git_ds cat-file -p HEAD:.gitmodules | grep '^\sdatalad-id' | cut -d= -f2); do
+  dep_path="$hp_path/$(id2relpath "$dep")"
+  if [ ! -d "$dep_path" ]; then
+    >&2 echo "$dep" not available in "$hp_path"
+    error=1
+  else
+    echo "$dep"
+  fi
+done
+
+exit $error

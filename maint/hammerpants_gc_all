@@ -1,0 +1,10 @@
+#!/bin/bash
+
+set -e -u
+
+find "$1" \
+    -mindepth 3 -maxdepth 3 \
+    -name objects \
+    -type d \
+    -print \
+    -execdir hammerpants_gc \;

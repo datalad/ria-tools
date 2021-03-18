@@ -1,0 +1,10 @@
+#!/bin/bash
+#
+# Report any HAMMERPANTS item not containing a Git repo
+#
+set -e -u
+
+for i in $(find -H "$1" -mindepth 2 -maxdepth 2); do
+    test -d "$i"/objects && true || echo "$i";
+done
+

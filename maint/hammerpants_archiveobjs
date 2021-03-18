@@ -1,0 +1,58 @@
+#!/bin/bash
+# 
+# Copy or Move annex objects into a 7z archive, accessible by ria-remote
+#
+# Usage: hammerpants_archiveobjs copy|move <dataset args>
+#
+
+# !!! this next one is IMPORTANT, it protects against 'rm -rf'
+set -e -u -x
+
+if [ "$1" = "move" ]; then
+  move=1
+elif [ "$1" = "copy" ]; then
+  move=0
+else
+  >&2 echo "First argument must be 'move' or 'copy'."
+  exit 1
+fi
+# take off mode arg and find dataset with the rest
+shift
+
+# from PATH, need not be executable
+source hammerpants_dsinfo
+
+# uncompressed archive by default
+sevenzopts=${HP_ZIPOPTS:--mx0}
+
+objpath="$ds_path/annex/objects"
+archivepath="$ds_path/archives"
+
+if [ ! -d "$objpath" ]; then
+  >&2 echo "No annex objects. Done."
+  exit 0
+fi
+
+if [ ! -d "$archivepath" ]; then
+    mkdir -p "$archivepath"
+    # only chown when freshly created to not destroy potential
+    # custom permission setup
+    # whoever owns the object store, owns the archives
+    chown -R --reference "$objpath" "$archivepath"
+fi
+
+if [ $move = 1 ]; then
+  mv "$objpath" "$objpath"_
+  objpath="$objpath"_
+fi
+
+cd "$objpath"
+# always update, also works from scratch
+7z u "$archivepath/archive.7z" . $sevenzopts
+chown -R --reference "$objpath" "$archivepath"/archive.7z
+cd -
+
+if [ $move = 1 ]; then
+  rm -rf "$objpath"
+  rmdir --ignore-fail-on-non-empty "$ds_path/annex"
+fi
