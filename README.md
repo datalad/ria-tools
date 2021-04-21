@@ -1,12 +1,13 @@
 # RIA-Tools
 
+[RIA stores overview](docs/overview.md)
+
 # NOTE: THIS IS UNDER CONSTRUCTION AND NOT UP-TO-DATE!
 
 This is supposed to become a collection of scripts to setup and maintain a
 datalad RIA store. For now this is not intended to be an installable package,
 since generic deployment and acceptable dependencies aren't obvious. Instead
 it's an entry point showing what you can (and may be have to) do and how.
-
 
 ## Data store maintainer scripts
 
@@ -43,8 +44,8 @@ Various scripts are provided under `maint/`. The data store location is not hard
    - hammerpants_nogitrepo
 
      List all dataset entries in a store without an associated Git repo.
-     
-     
+
+
 ## OUTDATED - base requirements for config procedure
 
 
